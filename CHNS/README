@@ -6,3 +6,6 @@ Purpose:
   Summarize values of daily intake rates of food items consumed by CHNS subjects. Food items are masked as food code, which is required for the extract of data. 
   Food code can be obtained from Chinese Center for Disease Control and Prevention (CCDC)
   Probabilistically characterize the distribution of daily food intake
+
+CHNS data used in the following publication:
+1. Zhou Z, Kang Y, Li H, Cao S, Xu J, Duan X, Yang G, Shao K. 2020. Estimating inorganic arsenic exposure from rice intake in chinese urban population. Environmental pollution (Barking, Essex : 1987) 263:114397.
