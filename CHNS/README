@@ -3,5 +3,6 @@ by Population Center at University of North Carolina at Chapel Hill
 Data from 7200 household and 30000 individuals from all across China
 
 Purpose:
-  Summarize values of daily intake rates of food items consumed by CHNS subjects. Food items are masked as food code, which is required for the extract of data. Food code can be obtained from Chinese Center for Disease Control and Prevention (CCDC)
+  Summarize values of daily intake rates of food items consumed by CHNS subjects. Food items are masked as food code, which is required for the extract of data. 
+  Food code can be obtained from Chinese Center for Disease Control and Prevention (CCDC)
   Probabilistically characterize the distribution of daily food intake
