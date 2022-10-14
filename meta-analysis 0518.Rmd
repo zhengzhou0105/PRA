@@ -1,0 +1,544 @@
+---
+title: "Meta-analysis of iAs BC"
+author: "Zheng Zhou"
+date: "5/13/2019"
+output:
+  word_document: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# Introduction
+
+The objective of our meta-analysis is to have a robust, distributional estimation of the bioaccessibility (BC)
+of inorganic arsenic in rice.
+We first simulated bioaccessibility values for 1000 iterations using a boostrapping, parametric simulation techinque
+[Rubinstein & Kroese, 2016][1] based on summarized original data as shown in table S1.
+Each iteration of the simulated bioaccessibility data were then analyzed with the Maximum Likelihood Estimate
+algorithm [Cramér,H.,2016][2] to estimate a pair of beta parameters.
+The 1000 pairs of beta parameters were summarized and plotted for visualization. We took the mean curve to 
+describe the central tendency of the data, which is marked in red.
+
+# Procedure
+
+## Load original data and cleaning
+
+Load the data:
+```{r}
+library(readxl)
+AsBC <- read_excel("Study summary 0517.xlsx" , sheet = "iAs BC")
+```
+
+Dissect the dataset by study:
+```{r}
+# only intestine data are used
+# Sun et al. 2012, Alava et al. 2013b and the last two sample of Calatayud et al. 2018 are not used
+
+# Ackernman et al. 2005
+Ackerman <- AsBC[1:5,]
+nAck <- 5
+
+# Laparra et al. 2005
+Laparra <- AsBC[6:13,]
+nLap <- 8
+
+# Alava et al. 2013a
+AlavaA <- AsBC[18:20,]
+nAlaA <- 3
+
+# Lee et al. 2018
+Lee <- AsBC[24:33,]
+nLee <- 10
+
+# Calatayud et al. 2018
+Cala <- AsBC[34:35,]
+nCala <- 2
+```
+
+If the study provides detailed data of each sample in the study, then the sample-wise data are used for simulation;
+otherwise the across-sample, study-summary data are used.
+Taking [Alava et al.(2013)a][4] as an example. 
+
+```{r}
+print(AlavaA)
+```
+
+The study reports bioaccessibility values for each of its three samples. Therefore, the three bioaccessibility
+values were simulated. 
+
+For each study, the number of data simulated depends on the sample size of the study and number of replicates in
+each sample. Still taking [Alava et al.(2013)a][4] as an example, it has three samples with three replicates in
+each sample. Therefore, a total of nine data points were simulated for this study.
+
+Concentrations are simulated based on the assumption of normality, same as the weighted average method.
+Bioaccessibility is simulated based on the assumption of uniform distribution, if the mean+2SD of bioaccessibility
+would exceed 100%.
+
+Define a function to simulate data for a study given sample size, number of replicate in each sample, mean and SD
+of each sample:
+```{r}
+muSDGen <- function(s,r,mu,sd){                   # s sample size, r replicate, mu mean, sd SD
+  temp <- list()
+  y <- vector()
+  for (i in 1:s){                                 # for each sample, simulate data points = number of replicates
+    temp[[i]] <- rnorm(r[i],mu[i],sd[i])          # assumption of normal distribution for arsenic concentration
+    y <- c(y, unlist(temp[i]))
+  }
+ return(y)                                       # put all simulated values in one vector
+}
+iter <- 1000                    # number of iteration
+set.seed(47401)                 # set a random seed to start
+```
+
+If bioaccessibility values were reported in the study, bioaccessibility was simulated directly from reported values.
+If bioaccessibility values were not reported, bioaccessibility data were computed based on the definition of 
+bioaccessibility:
+$$
+Bioaccessibility  = \frac{M_{bioaccessible}}{M_{original}} \\
+where\, M_{bioaccessible}=amount/concentration\,of\,inorganic\,arsenic\,that\,is\,soluble\,in\,GI\,tract \\
+       M_{original}=amount/concentration\,of\,inorganic\,arsenic\,that\,is\,soluble\,in\,rice
+$$
+For example, [Ackerman et al.(2005)][3] does not report bioaccessibility values directly. The mean$\pm{SD}$ of
+concentration of iAs in cooked rice and the bioaccessible concentration in GI extracts were available instead.
+Concentrations were simulated following the procedure described previously and bioaccessibility was calculated using
+the equation above.
+
+## Simulation of iAs BC
+
+Simulated bioaccessibility data in one iteration are pooled together.
+Number of data in one simulate = sum of replicates in all studies.
+
+Parameters of beta distributions (a,b) are estimated by the data in each iteration. Since the data were simulated
+for 1000 iterations, there are 1000 pairs of parameters. 
+A beta curve is plotted using each pair of parameters. A graph of the 1000 curve is displayed.
+
+Ackerman et al. 2005 : sample-wise BC is reported as mean and SD, would not exceed 100%
+```{r}
+sim.mtx.ack <- matrix(NA,iter, sum(Ackerman$replicate))
+for ( i in 1:iter) {
+  temp.ack <- muSDGen( s = nAck,
+           r = Ackerman$replicate,
+           mu = Ackerman$`iAs post_mean`,                 # post iAs
+           sd = Ackerman$`iAs post_sd`) /  
+    muSDGen( s = nAck,
+             r = Ackerman$replicate,
+             mu = Ackerman$`iAs pre_mean`,                # pre iAs
+             sd = Ackerman$`iAs pre_sd`)
+   if (sum(temp.ack >= 1) == 0) {
+     sim.mtx.ack[i,] <- temp.ack
+   } else {
+     while( sum(temp.ack >= 1) != 0){
+       temp.ack <- muSDGen( s = nAck,
+                        r = Ackerman$replicate,
+                        mu = Ackerman$`iAs post_mean`,                 # post iAs
+                        sd = Ackerman$`iAs post_sd`) /  
+         muSDGen( s = nAck,
+                  r = Ackerman$replicate,
+                  mu = Ackerman$`iAs pre_mean`,                # pre iAs
+                  sd = Ackerman$`iAs pre_sd`)
+     }
+     sim.mtx.ack[i,] <- temp.ack
+   }
+}
+```
+
+Laparra et al. 2005: sample-wise BC not reported; sample-wise iAs concentrations were reported. However, simulated
+bioaccessibility in most samples based on normal distriubtion of concentrations exceeded 100%.
+Use an uniformly distributed across-sample bioaccessibility of 63-99% as reported by the author.
+```{r}
+sim.mtx.lap <- matrix(NA,iter,sum(Laparra$replicate))
+for( i in 1:iter){
+  sim.mtx.lap[i,] <- runif(sum(Laparra$replicate),0.63,0.99)
+}
+```
+
+Alava et al. 2013a: sample-wise BC reported as mean and SD, would not exceed 100%
+```{r}
+sim.mtx.alaA <- matrix(NA,iter, sum(AlavaA$replicate))
+for ( i in 1:iter) {
+   temp.alaA <- rnorm(AlavaA$replicate,AlavaA$`iAs BC_mean`,AlavaA$`iAs BC_sd`)
+   if (sum(temp.alaA >= 1) == 0) {
+     sim.mtx.alaA[i,] <- temp.alaA
+   } else {
+     while(sum(temp.alaA >= 1) != 0){
+       temp.alaA <- rnorm(AlavaA$replicate,AlavaA$`iAs BC_mean`,AlavaA$`iAs BC_sd`)
+     }
+   sim.mtx.alaA[i,] <- temp.alaA
+   }
+}
+```
+
+Lee et al. 2018: BC not reported; sample-wise concentration available, would not exceed 100%
+```{r}
+sim.mtx.lee <- matrix(NA,iter, sum(Lee$replicate))
+for( i in 1:iter) {
+    temp.lee <- muSDGen( s = nLee,
+           r = Lee$replicate,
+           mu = Lee$`iAs post_mean`,      # post iAs
+           sd = Lee$`iAs post_sd`) / 
+    muSDGen( s = nLee,
+             r = Lee$replicate,
+             mu = Lee$`iAs pre_mean`,     # pre iAs
+             sd = Lee$`iAs pre_sd`)
+    if (sum(temp.lee >= 1) == 0) {
+      sim.mtx.lee[i,] <- temp.lee
+    } else {
+      while( sum(temp.lee >= 1) != 0){
+        temp.lee <- muSDGen( s = nLee,
+                         r = Lee$replicate,
+                         mu = Lee$`iAs post_mean`,      # post iAs
+                         sd = Lee$`iAs post_sd`) / 
+          muSDGen( s = nLee,
+                   r = Lee$replicate,
+                   mu = Lee$`iAs pre_mean`,     # pre iAs
+                   sd = Lee$`iAs pre_sd`)
+      }
+      sim.mtx.lee[i,] <- temp.lee
+    }
+}
+```
+
+Calatayud et al. 2018: sample-wise BC reported as single value. Uniform distribution applied (0.86,1) as across-
+sample data
+```{r}
+sim.mtx.cala <- matrix(NA,iter,sum(Cala$replicate))
+for( i in 1:iter){
+  sim.mtx.cala[i,] <- runif(sum(Cala$replicate),0.86,0.99)
+}
+```
+
+## MLE estimate and plotting of iAs BC
+
+```{r}
+library(Rfast)
+iAsBC <- matrix(NA,iter,84)
+beta.para<-matrix(NA,iter,2)
+for (i in 1:iter){
+  iAsBC[i,]<-c(sim.mtx.ack[i,],
+                 sim.mtx.lap[i,],
+                 sim.mtx.alaA[i,], 
+                 sim.mtx.lee[i,],
+                 sim.mtx.cala[i,])
+  sample.temp <- iAsBC[i,]
+  beta.para[i,]<-beta.mle(sample.temp)$param  
+}
+
+## Get plot for the Beta Distributions ##
+plot.step<-seq(0,1,length.out = 501)
+plot.resp.mtx<-matrix(NA,iter,length(plot.step))
+
+plot(0, 0, ty = "n", xlab="Intestinal Bioaccessibility of Inorganic Arsenic in Rice",ylab="Density", 
+     main="Estimated Distribution of Bioaccessibility",xlim = c(0,1), ylim=c(0,8),
+     cex.axis=1.3, cex.lab=1.3, cex.main=1.3)
+for (i in 1:iter){
+  plot.resp.mtx[i,]<-dbeta(plot.step,beta.para[i,1],beta.para[i,2])
+  lines(plot.step,plot.resp.mtx[i,],col="grey")
+}
+mean.curve<-colMeans(plot.resp.mtx)
+lines(plot.step,mean.curve,col="red")
+# find parameters of the estimated mean curve
+a1 <- mean(beta.para[,1])
+b1 <- mean(beta.para[,2])
+guess <- dbeta(plot.step,a1,b1)
+lines(plot.step,guess,col="blue")
+```
+
+## simulation of tAs BC
+
+The simulation was performed by study. We employed the same method as we used in the simulation of iAs
+bioaccessibility. Additionally, we ensured that assumptions of simulation were consistent within each study.
+That is, if sample-wise simulation was perfromed for iAs bioaccessibility, it will also be carried out for all
+other simulations of this study.
+
+Ackerman et al. 2005: sample-wise tAs bioaccessibility was provided in the paper.
+We perfromed sample-wise simulate for tAs bioaccessibility, using the same procedure as for iAs bioaccessibility.
+However, one sample reports value > 100%. We used an approximate of 0.999 for this sample.
+```{r}
+sim.tBC.ack <- matrix(NA,iter, sum(Ackerman$replicate))
+for ( i in 1:iter) {
+  temp <- c(rnorm(3,0.97,0.0185), # normality assumed if value no greater than 100%
+            rnorm(3,0.92,0.0085), 
+            rep(0.999,times = 3),  # mean >> 1, simulated as 0.999
+            rnorm(3,0.8,0.0055),
+            rnorm(5,0.95,0.0295))
+  if (sum(temp>1) ==0){
+    sim.tBC.ack[i,] <- temp
+  } else {
+    while(sum(temp>1) !=0){
+            temp <- c(rnorm(3,0.97,0.0185), # normality assumed if value no greater than 100%
+            rnorm(3,0.92,0.0085), 
+            rep(0.999,times = 3),  # mean >> 1, simulated as 0.999
+                  rnorm(3,0.8,0.0055),
+                  rnorm(5,0.95,0.0295))
+    }
+    sim.tBC.ack[i,] <- temp
+  }
+}
+```
+
+Laparra et al. 2005: across-sample: tAs bioaccessibility not reported by the author. We used the mean tAs
+bioaccessibiliy 0.834-1.000 as shown in table 1 following a across-sample uniform distribution for simulation.
+```{r}
+sim.tBC.lap <- matrix(NA,iter,sum(Laparra$replicate))
+for(i in 1:iter){
+  sim.tBC.lap[i,] <- runif(sum(Laparra$replicate),0.834,0.999)
+}
+```
+
+Sun et al.2012: this study did not enable us to simulate its iAs bioaccessibility data, we did not include it in
+our regression.
+
+Alava et al. 2013a:tAs bioaccessibility was simulated based on data on arsenic speication in cooked rice and the 
+bioaccessibility of iAs and oAs respectively. 
+Bioaccessible tAs was estimated = iAs bioaccessibility * iAs concentration in rice + oAs bioaccessibility * 
+oAs concentration in rice.
+tAs bioaccessibility was then estimated = bioaccessible tAs / tAs concentration in rice.
+```{r}
+sim.tBC.alaA <- matrix(NA, iter, sum(AlavaA$replicate))
+for(i in 1:iter){
+  tAs.bio <- sim.mtx.alaA[i,] * (muSDGen(s = nAlaA, r = AlavaA$replicate,   # iAs BC * (iAs pre = AsIII pre+
+          mu = AlavaA$`AsIII pre_mean` , sd = AlavaA$`AsIII pre_sd`) + 
+            muSDGen(s = nAlaA, r = AlavaA$replicate,                          # AsV pre)
+                    mu = AlavaA$`AsV pre_mean` , sd = AlavaA$`AsV pre_sd`))+ 
+          muSDGen(s = nAlaA, r = AlavaA$replicate,                        # oAs BC * oAs pre
+                  mu = AlavaA$`oAs BC_mean` , sd = AlavaA$`oAs BC_sd`)*
+          muSDGen(s = nAlaA, r = AlavaA$replicate, mu = AlavaA$`oAs pre_mean` , sd = AlavaA$`oAs pre_sd`)
+  sim.tBC.alaA[i,] <- tAs.bio / muSDGen(s = nAlaA, r = AlavaA$replicate,    # tAs BC = tAs bio / 
+                                mu = AlavaA$`tAs pre_mean` , sd = AlavaA$`tAs pre_sd`) # tAs pre
+}
+```
+
+Lee et al.2018: this study provides sample-wise tAs concentration data.
+```{r}
+sim.tBC.lee <- matrix(NA,iter, sum(Lee$replicate))
+for( i in 1:iter) {
+    temp.lee <- muSDGen( s = nLee,
+           r = Lee$replicate,
+           mu = Lee$`tAs post_mean`,              # post tAs
+           sd = Lee$`tAs post_sd`) / 
+    muSDGen( s = nLee,
+             r = Lee$replicate,
+             mu = Lee$`tAs pre_mean`,             # pre tAs
+             sd = Lee$`tAs pre_sd`)
+    if (sum(temp.lee >= 1) == 0) {
+      sim.tBC.lee[i,] <- temp.lee
+    } else {
+      while( sum(temp.lee >= 1) != 0){
+            temp.lee <- muSDGen( s = nLee,
+                r = Lee$replicate,
+                mu = Lee$`tAs post_mean`,              # post tAs
+                sd = Lee$`tAs post_sd`) / 
+              muSDGen( s = nLee,
+                r = Lee$replicate,
+                mu = Lee$`tAs pre_mean`,             # pre tAs
+                sd = Lee$`tAs pre_sd`)
+      }
+      sim.tBC.lee[i,] <- temp.lee
+    }
+}
+```
+
+Calatayud et al. 2018: across-sample simulation is performed for tAs bioaccessibility same as for iAs.
+We used a mean tAs bioaccessbility value of 0.854-1.000 following uniform distribution as shown in table 1.
+```{r}
+sim.tBC.cala <- matrix(NA,nrow = iter, ncol = sum(Cala$replicate))
+for(i in 1:iter){
+  sim.tBC.cala[i,] <- runif(sum(Cala$replicate),0.854,0.999)
+}
+```
+
+## MLE estimation of tAs BC
+
+The distribution of tAs BC was estimated and plotted using the same method as for iAs BC. i
+A beta distribution is assumed for tAs BC because its range falls within (0,1), which best accomendates our data of
+tAs BC compared with other distributions. 
+The two parameters of beta distribution, a and b, were estimated by iteration. 
+Therefore, 1000 pairs of a and b were estimated from 1000 iterations of tAs BC data.
+
+```{r}
+tAsBC <- matrix(NA,iter,84)
+beta.para.tAs<-matrix(NA,iter,2)
+for (i in 1:iter){
+  tAsBC[i,]<-c(sim.tBC.ack[i,],
+                 sim.tBC.lap[i,],
+                 sim.tBC.alaA[i,], 
+                 sim.tBC.lee[i,],
+                 sim.tBC.cala[i,])
+  sample.temp.tAs <- tAsBC[i,]
+  beta.para.tAs[i,]<-beta.mle(sample.temp.tAs)$param  
+}
+
+## Get plot for the Beta Distributions ##
+plot.step<-seq(0,1,length.out = 501)
+plot.tAs.mtx<-matrix(NA,iter,length(plot.step))
+
+plot(0, 0, ty = "n", xlab="Intestinal Bioaccessibility of Total Arsenic in Rice",ylab="Density", 
+     main="Estimated Distribution of Bioaccessibility",xlim = c(0,1), ylim=c(0,8),
+     cex.axis=1.3, cex.lab=1.3, cex.main=1.3)
+for (i in 1:iter){
+  plot.tAs.mtx[i,]<-dbeta(plot.step,beta.para.tAs[i,1],beta.para.tAs[i,2])
+  lines(plot.step,plot.tAs.mtx[i,],col="grey")
+}
+mean.curve.tAs<-colMeans(plot.tAs.mtx)
+lines(plot.step,guess.tAs , col = "blue", lwd = 2)
+
+# find the parameter of the mean curve
+a2 <- mean(beta.para.tAs[,1])    # mean of estimated parameters
+b2 <- mean(beta.para.tAs[,2])
+guess.tAs <- dbeta(plot.step,a2,b2)
+lines(plot.step,guess.tAs , col = "red")
+```
+
+## Correlation between iAs BC and tAs BC
+
+We studied the correlation between iAs BC and tAs BC. 
+We applied Pearson's Product-Moment Correlation Coefficient method to estimate the linear correlation between 
+iAs BC and tAs BC [Cramér,H.,2016][2].
+This estimation was based on data drawn from studies where both iAs BC and tAs BC are available.
+```{r}
+# iAs BC and tAs BC have the same number of iterations
+# these data construct 1000 iterations of iAs BC- tAs BC pairs.
+# estimate Pearson's r for data in each iteration
+library(Hmisc) # function to return both r and p
+cor.mtx <- matrix(NA,iter,2)            # a matrix to keep r and p
+colnames(cor.mtx) <- c("Pearson'r" , "p value")
+cor.list <- list()    # create a list to keep estimated correlation output
+for( i in 1:iter){                             
+  cor.list[[i]] <- rcorr(iAsBC[i,],tAsBC[i,])             # calculate r and p
+  cor.mtx[i,1] <-  cor.list[[i]]$r[1,2]          # keep Pearson's r in the first column
+  cor.mtx[i,2] <- cor.list[[i]]$P[1,2]
+}
+summary(cor.mtx[,1])
+hist(cor.mtx[,1] , main = "Pearson's r between iAs BC and tAs BC" , xlab = "Pearson'r")
+# number of r that are significant
+sum(cor.mtx[,2] < .05)
+```
+Our results show that the correlation between iAs BC and tAs BC is weak (mean r = -0.21) . 51.4% of the p value is
+less than 0.05, indicating that the significance of r might completely result from randomness. 
+
+## Regression Analysis
+
+To study the association between factors that might affect iAs bioaccessibility, we applied a generlized linear
+model to identify factors having strong correlation with iAs bioaccessibility.
+Since our dependent varaible is a continous variable of value in [0,1]. We applied a normal error distribution
+with logit inverse link function in our regression analysis.
+
+The predictors included in our regression analysis are: 
+concentration of inorganic arsenic in cooking water ug/L (iAs cooking),milling status of rice(milling),
+and rice grain type(grain).
+
+
+```{r}
+# create vectors to keep cooking, milling and grain
+cooking <- c(rep(Ackerman$`iAs cooking`,times = Ackerman$replicate),
+             rep(Laparra$`iAs cooking`,times = Laparra$replicate),
+             rep(AlavaA$`iAs cooking`,times = AlavaA$replicate),
+             rep(Lee$`iAs cooking`,times = Lee$replicate),
+             rep(Cala$`iAs cooking`,times = Cala$replicate))
+milling <- c(rep(Ackerman$milling,times = Ackerman$replicate),
+             rep(Laparra$milling,times = Laparra$replicate),
+             rep(AlavaA$milling,times = AlavaA$replicate),
+             rep(Lee$milling,times = Lee$replicate),
+             rep(Cala$milling,times = Cala$replicate))
+grain <- c(rep(Ackerman$grain,times = Ackerman$replicate),
+             rep(Laparra$grain,times = Laparra$replicate),
+             rep(AlavaA$grain,times = AlavaA$replicate),
+             rep(Lee$grain,times = Lee$replicate),
+             rep(Cala$grain,times = Cala$replicate))
+# first fit a linear regression model with logit inverse link function
+mod.list <- list()
+for(i in 1:iter){
+  mod0 <- lm(iAsBC[i,] ~ cooking+milling+grain,
+                      family=gaussian(link = "logit") , na.action = na.omit)
+  mod.list[[i]] <- summary(mod0)
+}
+# keep fitted coefficient, SE and p value for each predictor 
+mod.coef <- matrix(NA,iter,5)
+mod.SE <- matrix(NA,iter,5)
+mod.p <- matrix(NA,iter,5)
+mod.mtx <- matrix(NA,iter,17)
+rsqrd <- vector()
+p <- vector()
+for(i in 1:iter){
+  mod.coef[i,] <- mod.list[[i]]$coefficients[,1]  # estimated coefficient
+  mod.SE[i,] <- mod.list[[i]]$coefficients[,2] # SE
+  mod.p[i,] <- mod.list[[i]]$coefficients[,4] # p value of predictors
+  rsqrd [i] <- mod.list[[i]]["r.squared"]         # r square
+  Fstat <- unlist(mod.list[[i]]["fstatistic"])
+  attributes(Fstat) <- NULL
+  p[i] <- pf(Fstat[1],Fstat[2],Fstat[3],lower.tail = F)   # use F stats to calculate model p value
+}
+
+
+mod.mtx <- matrix(NA,iter,17)
+for(i in 1:iter){
+  mod.mtx[i,1:5] <- mod.list[[i]]$coefficients[,1]  # estimated coefficient
+  mod.mtx[i,6:10] <- mod.list[[i]]$coefficients[,2] # SE
+  mod.mtx[i,11:15] <- mod.list[[i]]$coefficients[,4] # p value of predictors
+  mod.mtx[i,16] <- mod.list[[i]]["r.squared"]         # r square
+  Fstat <- unlist(mod.list[[i]]["fstatistic"])
+  attributes(Fstat) <- NULL
+  mod.mtx[i,17] <- pf(Fstat[1],Fstat[2],Fstat[3],lower.tail = F)   # use F stats to calculate model p value
+}
+```
+
+
+### Prediction of iAs BC from tAs BC 
+
+As indicated in the results of our correlation test, the association between iAs BC and tAs BC are weak and not
+very likely to be significant. 
+We perfromed a regression analysis to predict iAs BC from tAs BC using a simple linear model.
+Both iAs BC and tAs BC are on the percentage scale.
+```{r}
+reg.list <- list()   # a list to keep regression output
+for( i in 1:iter){                             
+  iAsBC <- c(sim.mtx.ack[i,],
+              sim.mtx.lap[i,],
+              sim.mtx.alaA[i,], 
+              sim.mtx.lee[i,],
+              sim.mtx.cala[i,])
+  tAsBC <- c(sim.tBC.ack[i,],
+             sim.tBC.lap[i,],
+             sim.tBC.alaA[i,],
+             sim.tBC.lee[i,],
+             sim.tBC.cala[i,])
+  reg.list[[i]] <- lm(iAsBC ~ tAsBC)
+  reg.coef[i] <- reg.list[[i]]$coefficients[2]    # keep the coefficient in the first column
+}
+# inspect coefficient and p value
+summary(reg.coef)
+hist(reg.coef , main = "Regression Coefficient" , xlab = "Regression coefficient of tAs BC on iAs BC")
+```
+
+# Reference
+
+[1]:Rubinstein, R. Y., & Kroese, D. P. (2016). Simulation and the Monte Carlo method (Vol. 10): John Wiley & Sons.
+
+[2]:Cramér, H. (2016). Mathematical methods of statistics (PMS-9) (Vol. 9): Princeton university press.
+
+[3]:Ackerman, A. H., Creed, P. A., Parks, A. N., Fricke, M. W., Schwegel, C. A., Creed, J. T., . . . Velal, N. P.
+(2005). Comparison of a chemical and enzymatic extraction of arsenic from rice and an assessment of the arsenic
+absorption from contaminated water by cooked rice. Environ Sci Technol, 39(14), 5241-5246.
+
+[4]:Alava, P., Du Laing, G., Odhiambo, M., Verliefde, A., Tack, F., & Van de Wiele, T. R. (2013)a. Arsenic
+bioaccessibility upon gastrointestinal digestion is highly determined by its speciation and lipid-bile salt
+interactions. Journal of Environmental Science and Health, Part A, 48(6), 656-665.
+
+[5]:Alava, P., Tack, F., Laing, G. D., & Van de Wiele, T. (2013)b. Arsenic undergoes significant speciation changes
+upon incubation of contaminated rice with human colon micro biota. J Hazard Mater, 262, 1237-1244. 
+
+[6]:Calatayud, M., Xiong, C., Du Laing, G., Raber, G., Francesconi, K., & van de Wiele, T. (2018). Salivary and Gut
+Microbiomes Play a Significant Role in in Vitro Oral Bioaccessibility, Biotransformation, and Intestinal Absorption 
+of Arsenic from Food. Environ Sci Technol, 52(24), 14422-14435. 
+
+[7]:Laparra, J. M., Velez, D., Barbera, R., Farre, R., & Montoro, R. (2005). Bioavailability of inorganic arsenic
+in cooked rice: practical aspects for human health risk assessments. J Agric Food Chem, 53(22), 8829-8833.
+
+[8]:Lee, S. G., Kim, J., Park, H., Holzapfel, W., & Lee, K. W. (2018). Assessment of the effect of cooking on
+speciation and bioaccessibility/cellular uptake of arsenic in rice, using in vitro digestion and Caco-2 and PSI
+cells as model. Food Chem Toxicol, 111, 597-604. 
+
+[9]:Sun, G. X., Van de Wiele, T., Alava, P., Tack, F., & Du Laing, G. (2012). Arsenic in cooked rice: effect of
+chemical, enzymatic and microbial processes on bioaccessibility and speciation in the human gastrointestinal
+tract. Environ Pollut, 162, 241-246.
