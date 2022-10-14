@@ -1,0 +1,739 @@
+---
+title: "iAs BC fitting"
+author: "Zheng Zhou"
+date: "7/30/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction and Objectives   
+
+In this document, I will explain three things:  
+1. why the ML estimate of beta is considered as a poor fit judging by KS statistics    
+2. What I propose to solve the problem     
+
+Please make direct references to specific scripts where you believe I made mistakes.   
+
+# 1 Simulation   
+
+***I assure you that my literature search is complete***   
+***I assure you that there is no errors in my simulation***   
+
+I present the script of data simulation just in case. If you don't have patience, please skip to the next section.
+
+```{r}
+library(readxl)
+iter <- 1000
+set.seed(47405)
+
+## =======load data======
+ASBC <- read_xlsx("Study summary 0708.xlsx",
+                  sheet = "iAs BC")
+head(ASBC)                                       # inspect the top lines
+
+## -----simulation function-----
+muSDGen <- function(s,r,mu,sd){                   # s sample size, r replicate, mu mean, sd SD
+  temp <- list()
+  y <- vector()
+  for (i in 1:s){                                 # for each sample, simulate data points = number of replicates
+    temp[[i]] <- rnorm(r[i],mu[i],sd[i])          # assumption of normal distribution for arsenic concentration
+    y <- c(y, unlist(temp[i]))
+  }
+  return(y)                                       # put all simulated values in one vector
+}
+
+## ----------
+# study 1 ackerman 2005
+
+## iAsBC not reported;
+## iAsBC = iAs_post/iAs_pre
+
+nrow.ack <- which(ASBC$Ref == "Ackerman et al. 2005")
+ackerman <- ASBC[nrow.ack,]
+n.ack <- length(nrow.ack)
+dup.ack <- ackerman$replicate
+
+ias.pre.mu.ack <- ackerman$`iAs pre_mean`
+ias.pre.sd.ack <- ackerman$`iAs pre_sd`
+oas.pre.mu.ack <- ackerman$`oAs pre_mean`
+oas.pre.sd.ack <- ackerman$`oAs pre_sd`
+tas.pre.mu.ack <- ackerman$`tAs pre_mean`
+ias.post.mu.ack <- ackerman$`iAs post_mean`
+ias.post.sd.ack <- ackerman$`iAs post_sd`
+oas.post.mu.ack <- ackerman$`oAs post_mean`
+oas.post.sd.ack <- ackerman$`oAs post_sd`
+tas.post.mu.ack <- ackerman$`tAs post_mean`
+tas.post.sd.ack <- ackerman$`tAs post_sd`
+tbc.mu.ack <- ackerman$`tAs BC_mean`
+tbc.sd.ack <- ackerman$`tAs BC_sd`
+
+upper.ack<-0.999999
+lower.ack<-0
+
+sim.ias.pre.ack <- matrix(NA,iter,sum(dup.ack))
+sim.ibc.ack <- matrix(NA,iter,sum(dup.ack))
+sim.obc.ack <- matrix(NA,iter,sum(dup.ack))
+sim.prp.ack <- matrix(NA,iter,sum(dup.ack))
+sim.tbc.ack <- matrix(NA,iter,sum(dup.ack))
+
+for(i in 1:iter){
+  temp.post.ack <- muSDGen(s=n.ack, # iAs post
+                           r=dup.ack,
+                           mu=ias.post.mu.ack,
+                           sd=ias.post.sd.ack)
+  temp.iAs.pre.ack <- muSDGen(s=n.ack,  # iAs pre
+                              r=dup.ack,
+                              mu=ias.pre.mu.ack,
+                              sd=ias.pre.sd.ack)
+  sim.ias.pre.ack[i,] <- temp.iAs.pre.ack   # iAs pre in matrix for regression
+  
+  temp.iBC.ack <- temp.post.ack/temp.iAs.pre.ack  # iAs BC
+  temp.iBC.ack[temp.iBC.ack>upper.ack]<-upper.ack  # iBC truncation
+  temp.iBC.ack[temp.iBC.ack<lower.ack]<-lower.ack
+  sim.ibc.ack[i,]<-temp.iBC.ack
+  
+  temp.tBC.ack <- muSDGen(s=n.ack,                  # tBC
+                          r=dup.ack,
+                          mu=tbc.mu.ack,
+                          sd=tbc.sd.ack)
+  temp.tBC.ack[temp.tBC.ack > upper.ack] <- upper.ack       # tBC truncation
+  temp.tBC.ack[temp.tBC.ack < lower.ack] <- lower.ack
+  sim.tbc.ack[i,] <- temp.tBC.ack
+  
+  temp.prp.ack <- temp.iAs.pre.ack / rep(tas.pre.mu.ack,times=dup.ack) # iAs proportion
+  
+  sim.prp.ack[i,]<-temp.prp.ack     # iAs prp in matrix for regression
+  
+  temp.oas.pre.ack <- muSDGen(s=n.ack,                          # oAs pre
+                              r=dup.ack,
+                              mu=oas.pre.mu.ack,
+                              sd=oas.pre.sd.ack)
+  temp.oas.post.ack <- muSDGen(s=n.ack,                          # oAs post
+                              r=dup.ack,
+                              mu=oas.post.mu.ack,
+                              sd=oas.post.sd.ack)
+  temp.obc.ack <- temp.oas.post.ack / temp.oas.pre.ack        # oBC
+  temp.obc.ack[temp.obc.ack>upper.ack]<-upper.ack  # oBC truncation
+  temp.obc.ack[temp.obc.ack<lower.ack]<-lower.ack
+  sim.obc.ack[i,] <- temp.obc.ack
+}
+
+## ----------
+## study 2: alava 2013a
+
+## iAsBC reported as mean and SD
+# iAs_pre=iAs3 + iAs5
+# tAs BC = (iAs pre * iBC + oAs pre * oBC) / tAs pre
+
+nrow.ala13 <- which(ASBC$Ref == "Alava et al. 2013a")
+alava13 <- ASBC[nrow.ala13,]
+n.ala13 <- length(nrow.ala13)
+dup.ala13 <- alava13$replicate
+
+ibc.mu.ala13 <- alava13$`iAs BC_mean`
+ibc.sd.ala13 <- alava13$`iAs BC_sd`
+as3.pre.mu.ala13 <- alava13$`AsIII pre_mean`
+as3.pre.sd.ala13 <- alava13$`AsIII pre_sd`
+as5.pre.mu.ala13 <- alava13$`AsV pre_mean`
+as5.pre.sd.ala13 <- alava13$`AsV pre_sd`
+oas.pre.mu.ala13 <- alava13$`oAs pre_mean`
+oas.pre.sd.ala13 <- alava13$`oAs pre_sd`
+tas.pre.mu.ala13 <- alava13$`tAs pre_mean`
+tas.pre.sd.ala13 <- alava13$`tAs pre_sd`
+obc.mu.ala13 <- alava13$`oAs BC_mean`
+obc.sd.ala13 <- alava13$`oAs BC_sd`
+
+upper.ala<-0.999999
+lower.ala<-0
+
+sim.ibc.ala13 <- matrix(NA,iter,sum(dup.ala13))
+sim.ias.pre.ala13 <- matrix(NA,iter,sum(dup.ala13))
+sim.prp.ala13 <- matrix(NA,iter,sum(dup.ala13))
+sim.obc.ala13 <- matrix(NA,iter,sum(dup.ala13))
+sim.tbc.ala13 <- matrix(NA,iter,sum(dup.ala13))
+
+for(i in 1:iter){
+  temp.iBC.ala <- muSDGen(s= n.ala13,                        # iAs BC
+                          r= dup.ala13,
+                          mu=ibc.mu.ala13,
+                          sd=ibc.sd.ala13)
+  temp.iBC.ala[temp.iBC.ala > upper.ala] <- upper.ala        # iBC truncation
+  temp.iBC.ala[temp.iBC.ala] <- lower.ala
+  sim.ibc.ala13[i,] <- temp.iBC.ala
+  
+  temp.iAs.pre.ala <- muSDGen(n.ala13,                        # iAs pre=3+5
+                              dup.ala13,
+                              as3.pre.mu.ala13,
+                              as3.pre.sd.ala13)+
+    muSDGen(n.ala13,                        
+            dup.ala13,
+            as5.pre.mu.ala13,
+            as5.pre.sd.ala13)
+  sim.ias.pre.ala13[i,] <-temp.iAs.pre.ala
+  
+  temp.iAs.post.ala <- temp.iBC.ala * temp.iAs.pre.ala        # iAs post = iBC*iAs pre
+  
+  temp.oAs.pre.ala <- muSDGen(s= n.ala13,                      # oAs BC
+                              r= dup.ala13,
+                              mu= oas.pre.mu.ala13,
+                              sd= oas.pre.sd.ala13)
+  temp.oBC.ala <- muSDGen(s= n.ala13,                      
+                          r= dup.ala13,
+                          mu=obc.mu.ala13,
+                          sd=obc.sd.ala13)
+  temp.oBC.ala[temp.oBC.ala > upper.ala] <- upper.ala          # oBC truncation
+  temp.oBC.ala[temp.oBC.ala < lower.ala] <- lower.ala
+  sim.obc.ala13[i,] <- temp.oBC.ala
+  
+  temp.oAs.post.ala <- temp.oAs.pre.ala * temp.oBC.ala         # oAs post = oBC * oAs pre
+  
+  temp.tAs.post.ala <- temp.iAs.post.ala + temp.oAs.post.ala   # tAs post * iAs post + oAs post
+  temp.tAs.pre.ala <- muSDGen(s= n.ala13,                        # tAs pre
+                              r= dup.ala13,
+                              mu=tas.pre.mu.ala13,
+                              sd=tas.pre.sd.ala13)
+  temp.tBC.ala <- temp.tAs.post.ala / temp.tAs.pre.ala          # tAs BC=tAs post / tAs pre
+  temp.tBC.ala[temp.tBC.ala > upper.ala] <- upper.ala          # tAs BC truncation
+  temp.tBC.ala[temp.tBC.ala < lower.ala] <- lower.ala
+  sim.tbc.ala13[i,] <- temp.tBC.ala
+  
+  temp.prp.ala <- temp.iAs.pre.ala / muSDGen(s= n.ala13,                        # iAs prp=iAs pre/tAs pre
+                                             r= dup.ala13,
+                                             mu=tas.pre.mu.ala13,
+                                             sd=tas.pre.sd.ala13)
+  sim.prp.ala13[i,] <- temp.prp.ala
+}
+
+## ----------
+# study 3 Alava 2015
+
+# iAs BC not reported
+# iAs BC = (As3+As5 post) / (As3+As5 pre)
+
+nrow.ala15 <- which(ASBC$Ref == "Alava et al. 2015")
+alava15 <- ASBC[nrow.ala15,]
+n.ala15 <- length(nrow.ala15)
+dup.ala15 <- alava15$replicate
+
+as3.pre.mu.ala15 <- alava15$`AsIII pre_mean`
+as3.pre.sd.ala15 <- alava15$`AsIII pre_sd`
+as5.pre.mu.ala15 <- alava15$`AsV pre_mean`
+as5.pre.sd.ala15 <- alava15$`AsV pre_sd`
+oas.pre.mu.ala15 <- alava15$`oAs pre_mean`
+oas.pre.sd.ala15 <- alava15$`oAs pre_sd`
+tas.pre.mu.ala15 <- alava15$`tAs pre_mean`
+tas.pre.sd.ala15 <- alava15$`tAs pre_sd`
+as5.post.mu.ala15 <- alava15$`AsV post_mean`
+as5.post.sd.ala15 <- alava15$`AsV post_sd`
+oas.post.mu.ala15 <- alava15$`oAs post_mean`
+oas.post.sd.ala15 <- alava15$`oAs post_sd`
+tas.post.mu.ala15 <- alava15$`tAs post_mean`
+
+sim.ias.pre.ala15 <- matrix(NA,iter,sum(dup.ala15))
+sim.ibc.ala15 <- matrix(NA,iter,sum(dup.ala15))
+sim.obc.ala15 <- matrix(NA,iter,sum(dup.ala15))
+sim.tbc.ala15 <- matrix(NA,iter,sum(dup.ala15))
+sim.prp.ala15 <- matrix(NA,iter,sum(dup.ala15))
+
+for(i in 1:iter){
+  temp.ias.pre.ala <- muSDGen(n.ala15,                #iAs pre=as3+as5 pre
+                              dup.ala15,
+                              as3.pre.mu.ala15,
+                              as3.pre.sd.ala15)+
+                      muSDGen(n.ala15,
+                              dup.ala15,
+                              as5.pre.mu.ala15,
+                              as5.pre.sd.ala15)
+  sim.ias.pre.ala15[i,] <- temp.ias.pre.ala
+  
+  temp.ias.post.ala <-  0 +                          # iAs post = As3 post + As5 post, where As3 = 0
+                        muSDGen(n.ala15,
+                          dup.ala15,
+                          as5.post.mu.ala15,
+                          as5.post.sd.ala15)
+  temp.ibc.ala <- temp.ias.post.ala / temp.ias.pre.ala # iAs BC = iAs post / iAs pre
+  temp.ibc.ala[temp.ibc.ala > upper.ala] <- upper.ala  # iAs BC truncation
+  temp.ibc.ala[temp.ibc.ala < lower.ala]<- lower.ala
+  sim.ibc.ala15[i,] <- temp.ibc.ala
+  
+  temp.obc.ala <- muSDGen(n.ala15,                # oAs BC = oAs post / oAs pre
+                          dup.ala15,
+                          oas.post.mu.ala15,
+                          oas.post.sd.ala15)/
+    muSDGen(n.ala15,
+            dup.ala15,
+            oas.pre.mu.ala15,
+            oas.pre.sd.ala15)
+  temp.obc.ala[temp.obc.ala > upper.ala] <- upper.ala         # oAs BC truncation
+  temp.obc.ala[temp.obc.ala < lower.ala] <- lower.ala
+  sim.obc.ala15[i,] <- temp.obc.ala
+  
+  temp.tas.pre.ala <- muSDGen(n.ala15,                 # tAs pre
+                              dup.ala15,
+                              tas.pre.mu.ala15,
+                              tas.pre.sd.ala15)
+  temp.prp.ala <- temp.ias.pre.ala / temp.tas.pre.ala  # iAs prp
+  sim.prp.ala15[i,] <- temp.prp.ala
+  
+  temp.tbc.ala <- tas.post.mu.ala15 / temp.tas.pre.ala      # tAs BC = tAs post / tAs pre
+  temp.tbc.ala[temp.tbc.ala > upper.ala] <- upper.ala         # oAs BC truncation
+  temp.tbc.ala[temp.tbc.ala < lower.ala] <- lower.ala
+  sim.tbc.ala15[i,] <- temp.tbc.ala
+}
+
+## ----------
+## study 4 Du et al. 2019
+
+## iAsBC not reported
+## iAsBC = iAs_post / iAs_pre
+## no replicate in Du's samples
+## use SD values to add variability and uncertainty
+
+nrow.du <- which(ASBC$Ref == "Du et al. 2019")
+n.du <- length(nrow.du)
+du <- ASBC[nrow.du,]
+dup.du <- du$replicate
+
+upper.du <- 0.999999
+lower.du <- 0
+
+ias.pre.mu.du <- du$`iAs pre_mean`
+oas.pre.mu.du <- du$`oAs pre_mean`
+tas.pre.mu.du <- du$`tAs pre_mean`
+ias.post.mu.du <- du$`iAs post_mean`
+oas.post.mu.du <- du$`oAs post_mean`
+tas.post.mu.du <- du$`tAs post_mean`
+ias.pre.se.du <- sd(ias.pre.mu.du) / sqrt(sum(dup.du))         # global se used as sample SD for simulation
+oas.pre.se.du <- sd(oas.pre.mu.du) / sqrt(sum(dup.du))
+tas.pre.se.du <- sd(tas.pre.mu.du) / sqrt(sum(dup.du))
+ias.post.se.du <- sd(ias.post.mu.du) / sqrt(sum(dup.du))
+oas.post.se.du <- sd(oas.post.mu.du) / sqrt(sum(dup.du))
+tas.post.se.du <- sd(tas.post.mu.du) / sqrt(sum(dup.du))
+
+sim.ias.pre.du <- matrix(NA,iter,sum(dup.du))
+sim.ibc.du <- matrix(NA,iter,sum(dup.du))
+sim.obc.du <- matrix(NA,iter,sum(dup.du))
+sim.prp.du <- matrix(NA,iter,sum(dup.du))
+sim.tbc.du <- matrix(NA,iter,sum(dup.du))
+
+for(i in 1:iter){
+  temp.ias.pre.du <- rnorm(n.du,ias.pre.mu.du,ias.pre.se.du)
+  temp.ias.post.du <- rnorm(n.du,ias.post.mu.du,ias.post.se.du)
+  temp.oas.pre.du <- rnorm(n.du,oas.pre.mu.du,oas.pre.se.du)
+  temp.oas.post.du <- rnorm(n.du,oas.post.mu.du,oas.post.se.du)
+  temp.tas.pre.du <- rnorm(n.du,tas.pre.mu.du,tas.pre.se.du)
+  temp.tas.post.du <- rnorm(n.du,tas.post.mu.du,tas.post.se.du)
+  
+  sim.ias.pre.du[i,] <- temp.ias.pre.du
+  
+  temp.ibc.du <- temp.ias.post.du / temp.ias.pre.du         # iAs BC= iAs post/pre
+  temp.ibc.du[temp.ibc.du > upper.du] <- upper.du           # iAs BC truncation
+  temp.ibc.du[temp.ibc.du < lower.du] <- lower.du
+  sim.ibc.du[i,] <- temp.ibc.du
+  sim.prp.du[i,] <- temp.ias.pre.du / temp.tas.pre.du       # iAs prp
+  
+  temp.obc.du <- temp.oas.post.du / temp.oas.pre.du         # oAs BC= oAs post/pre
+  temp.obc.du[temp.obc.du > upper.du] <- upper.du           # oAs BC truncation
+  temp.obc.du[temp.obc.du < lower.du] <- lower.du
+  sim.obc.du[i,] <- temp.obc.du
+  
+  temp.tbc.du <- temp.tas.post.du / temp.tas.pre.du         # tAs BC= tAs post/pre
+  temp.tbc.du[temp.tbc.du > upper.du] <- upper.du           # tAs BC truncation
+  temp.tbc.du[temp.tbc.du < lower.du] <- lower.du
+  sim.tbc.du[i,] <- temp.tbc.du
+}
+
+## ----------
+## study 5 Laparra 2005
+
+## iAsBC not reported
+## iAsBC = iAs_post/iAs_pre
+## iAs_post=As3_post+As5_post
+
+nrow.lap <- which(ASBC$Ref == "Laparra et al. 2005")
+n.lap <- length(nrow.lap)
+laparra <- ASBC[nrow.lap,]
+dup.lap <- laparra$replicate
+
+ias.pre.mu.lap <- laparra$`iAs pre_mean`
+ias.pre.sd.lap <- laparra$`iAs pre_sd`
+tas.pre.mu.lap <- laparra$`tAs pre_mean`
+tas.pre.sd.lap <- laparra$`tAs pre_sd`
+as3.post.mu.lap <- laparra$`AsIII post_mean`
+as3.post.sd.lap <- laparra$`AsIII post_sd`
+as5.post.mu.lap <- laparra$`AsV post_mean`
+as5.post.sd.lap <- laparra$`AsV post_sd`
+tas.post.mu.lap <- laparra$`tAs post_mean`
+tas.post.sd.lap <- laparra$`tAs post_sd`
+
+upper.lap <- 0.999999
+lower.lap <- 0
+
+sim.ias.pre.lap <- matrix(NA,iter,sum(dup.lap))
+sim.ibc.lap <- matrix(NA,iter,sum(dup.lap))
+sim.prp.lap <- matrix(NA,iter,sum(dup.lap))
+sim.tbc.lap <- matrix(NA,iter,sum(dup.lap))
+sim.obc.lap <- matrix(NA,iter,sum(dup.lap))
+
+for(i in 1:iter){
+  temp.ias.pre.lap <- muSDGen(n.lap,                    # iAs pre
+                              dup.lap,
+                              ias.pre.mu.lap,
+                              ias.pre.sd.lap)
+  sim.ias.pre.lap[i,] <- temp.ias.pre.lap
+  
+  temp.tas.pre.lap <- muSDGen(n.lap,                    # tAs pre
+                              dup.lap,
+                              tas.pre.mu.lap,
+                              tas.pre.sd.lap)
+  temp.prp.lap <- temp.ias.pre.lap/temp.tas.pre.lap      # iAs prp
+  sim.prp.lap[i,] <- temp.prp.lap
+  
+  temp.ias.post.lap <- muSDGen(n.lap,                    # iAs post=as3+as5 post
+                                dup.lap,
+                                as3.post.mu.lap,
+                                as3.post.sd.lap)+
+    muSDGen(n.lap,
+            dup.lap,
+            as5.post.mu.lap,
+            as5.post.sd.lap)
+  temp.ibc.lap <- temp.ias.post.lap/temp.ias.pre.lap     # iAs BC = iAs post/ iAs pre
+  temp.ibc.lap[temp.ibc.lap > upper.lap] <- upper.lap    # iAs BC truncation
+  temp.ibc.lap[temp.ibc.lap < lower.lap] <- lower.lap
+  sim.ibc.lap[i,] <- temp.ibc.lap
+  
+  temp.tas.post.lap <- muSDGen(n.lap,                    #  tAs post
+                         dup.lap,
+                         tas.post.mu.lap,
+                         tas.post.sd.lap) 
+  
+  temp.tbc.lap <- temp.tas.post.lap / temp.tas.pre.lap # tAs BC = tAs post/pre
+  temp.tbc.lap[temp.tbc.lap > upper.lap] <- upper.lap    # tAs BC truncation
+  temp.tbc.lap[temp.tbc.lap < lower.lap] <- lower.lap
+  sim.tbc.lap[i,] <- temp.tbc.lap
+  
+  temp.oas.pre.lap <- temp.tas.pre.lap - temp.ias.pre.lap # oAs pre = tAs pre-iAs pre
+  temp.oas.post.lap <- temp.tas.post.lap - temp.ias.post.lap # oAs post = tAs post-iAs post
+  temp.obc.lap <- temp.oas.post.lap / temp.oas.pre.lap         # oAs BC = oAs post/pre
+  temp.obc.lap[temp.obc.lap > upper.lap] <- upper.lap    # oAs BC truncation
+  temp.obc.lap[temp.obc.lap < lower.lap] <- lower.lap
+  sim.obc.lap[i,] <- temp.obc.lap
+}
+
+## ----------
+# study 6 Lee 2018
+
+nrow.lee <- which(ASBC$Ref == "Lee et al. 2018")
+n.lee <- length(nrow.lee)
+lee <- ASBC[nrow.lee,]
+dup.lee <- lee$replicate
+
+ias.pre.mu.lee <- lee$`iAs pre_mean`
+ias.pre.sd.lee <- lee$`iAs pre_sd`
+oas.pre.mu.lee <- lee$`oAs pre_mean`
+oas.pre.sd.lee <- lee$`oAs pre_sd`
+tas.pre.mu.lee <- lee$`tAs pre_mean`
+tas.pre.sd.lee <- lee$`tAs pre_sd`
+ias.post.mu.lee <- lee$`iAs post_mean`
+ias.post.sd.lee <- lee$`iAs post_sd`
+oas.post.mu.lee <- lee$`oAs post_mean`
+oas.post.sd.lee <- lee$`oAs post_sd`
+tas.post.mu.lee <- lee$`tAs post_mean`
+tas.post.sd.lee <- lee$`tAs post_sd`
+
+upper.lee <- 0.99999
+lower.lee <- 0
+
+sim.ias.pre.lee <- matrix(NA,iter,sum(dup.lee))
+sim.ibc.lee  <- matrix(NA,iter,sum(dup.lee))
+sim.prp.lee  <- matrix(NA,iter,sum(dup.lee))
+sim.obc.lee <- matrix(NA,iter,sum(dup.lee))
+sim.tbc.lee <- matrix(NA,iter,sum(dup.lee))
+
+for(i in 1:iter){
+  temp.ias.pre.lee <- muSDGen(n.lee,                     # iAs pre
+                              dup.lee,
+                              ias.pre.mu.lee,
+                              ias.pre.sd.lee)
+  sim.ias.pre.lee[i,] <- temp.ias.pre.lee
+  
+  temp.ias.post.lee <- muSDGen(n.lee,                      # iAs post
+                          dup.lee,
+                          ias.post.mu.lee,
+                          ias.post.sd.lee) 
+  temp.ibc.lee <-  temp.ias.post.lee / temp.ias.pre.lee   # iAs BC = iAs post/pre
+  temp.ibc.lee[temp.ibc.lee > upper.lee] <- upper.lee   # iAs BC truncation
+  temp.ibc.lee[temp.ibc.lee < lower.lee] <- lower.lee
+  sim.ibc.lee[i,] <- temp.ibc.lee
+  
+  temp.tas.pre.lee <- muSDGen(n.lee,                     # tAs pre
+                              dup.lee,
+                              tas.pre.mu.lee,
+                              tas.pre.sd.lee)
+  temp.prp.lee <- temp.ias.pre.lee / temp.tas.pre.lee       # iAs prp = iAs / tAs pre
+  sim.prp.lee[i,] <- temp.prp.lee
+  
+  temp.tas.post.lee <- muSDGen(n.lee,                     # tAs post
+                          dup.lee,
+                          tas.post.mu.lee,
+                          tas.post.sd.lee) 
+  temp.tbc.lee <- temp.tas.post.lee / temp.tas.pre.lee   # tAs BC = tAs post/pre
+  temp.tbc.lee[temp.tbc.lee > upper.lee] <- upper.lee   # tAs BC truncation
+  temp.tbc.lee[temp.tbc.lee < lower.lee] <- lower.lee
+  sim.tbc.lee[i,] <- temp.tbc.lee
+  
+  temp.obc.lee <-  (temp.tas.post.lee- temp.ias.post.lee)/  # oAs BC = (tAs - iAs post) / oAs pre
+    muSDGen(n.lee,                    
+            dup.lee,
+            oas.pre.mu.lee,
+            oas.pre.sd.lee)
+  temp.obc.lee[temp.obc.lee > upper.lee] <- upper.lee   # oAs BC truncation
+  temp.obc.lee[temp.obc.lee < lower.lee] <- lower.lee
+  sim.obc.lee[i,] <- temp.obc.lee
+}
+
+## ----------
+# study 7 Mantha et al. 2017
+
+## iAs BC not reported
+## iAs BC = iAs post/iAs pre
+
+nrow.man <- which(ASBC$Ref == "Mantha et al. 2017")
+n.man <- length(nrow.man)
+mantha <- ASBC[nrow.man,]
+dup.man <- mantha$replicate
+
+ias.pre.mu.man <- mantha$`iAs pre_mean`
+ias.pre.sd.man <- mantha$`iAs pre_sd`
+oas.pre.mu.man <- mantha$`oAs pre_mean`
+oas.pre.sd.man <- mantha$`oAs pre_sd`
+tas.pre.mu.man <- mantha$`tAs pre_mean`
+tas.pre.sd.man <- mantha$`tAs pre_sd`
+ias.post.mu.man <- mantha$`iAs post_mean`
+ias.post.sd.man <- mantha$`iAs post_sd`
+oas.post.mu.man <- mantha$`oAs post_mean`
+oas.post.sd.man <- mantha$`oAs post_sd`
+tas.post.mu.man <- mantha$`tAs post_mean`
+tas.post.sd.man <- mantha$`tAs post_sd`
+
+sim.ias.pre.man <- matrix(NA,iter,sum(dup.man))
+sim.ibc.man <- matrix(NA,iter,sum(dup.man))
+sim.prp.man <- matrix(NA,iter,sum(dup.man))
+sim.tbc.man <- matrix(NA,iter,sum(dup.man))
+sim.obc.man <- matrix(NA,iter,sum(dup.man))
+
+upper.man <- 0.999999
+lower.man <- 0
+
+for(i in 1:iter){
+  temp.ias.pre.man <- muSDGen(n.man,                   # iAs pre
+                              dup.man,
+                              ias.pre.mu.man,
+                              ias.pre.sd.man)
+  sim.ias.pre.man[i,] <- temp.ias.pre.man
+  
+  temp.ibc.man <- muSDGen(n.man,                   # iAs BC=iAs post/pre
+                          dup.man,
+                          ias.post.mu.man,
+                          ias.post.sd.man) / temp.ias.pre.man
+  temp.ibc.man[temp.ibc.man > upper.man] <- upper.man
+  temp.ibc.man[temp.ibc.man < lower.man] <- lower.man
+  
+  sim.ibc.man[i,] <- temp.ibc.man
+  
+  temp.tas.pre.man <- muSDGen(n.man,                   # tAs pre
+                              dup.man,
+                              tas.pre.mu.man,
+                              tas.pre.sd.man)
+  temp.prp.man <- temp.ias.pre.man / temp.tas.pre.man   # prp = iAs/tAs pre
+  sim.prp.man[i,] <- temp.prp.man
+  
+  temp.tbc.man <- muSDGen(n.man,                   # tAs BC= tAs post/pre
+                          dup.man,
+                          tas.post.mu.man,
+                          tas.post.sd.man) / temp.tas.pre.man
+  temp.tbc.man[temp.tbc.man > upper.man] <- upper.man
+  temp.tbc.man[temp.tbc.man < lower.man] <- lower.man
+  sim.tbc.man[i,] <- temp.tbc.man
+  
+  temp.obc.man <- muSDGen(n.man,                   # oAs BC= oAs post/pre
+                          dup.man,
+                          oas.post.mu.man,
+                          oas.post.sd.man) / 
+    muSDGen(n.man,                   
+            dup.man,
+            oas.pre.mu.man,
+            oas.pre.sd.man)
+  temp.obc.man[temp.obc.man > upper.man] <- upper.man
+  temp.obc.man[temp.obc.man < lower.man] <- lower.man
+  sim.obc.man[i,] <- temp.obc.man
+}
+
+## ----------
+## study 8 Tokalioglu 2020
+
+nrow.tok <- which(ASBC$Ref == "Tokalioglu et al. 2020")
+n.tok <- length(nrow.tok)
+toka <- ASBC[nrow.tok,]
+dup.tok <- toka$replicate
+
+as3.pre.mu.tok <- toka$`AsIII pre_mean`
+as3.pre.sd.tok <- toka$`AsIII pre_sd`
+as5.pre.mu.tok <- toka$`AsV pre_mean`
+as5.pre.sd.tok <- toka$`AsV pre_sd`
+oas.pre.mu.tok <- toka$`oAs pre_mean`
+oas.pre.sd.tok <- toka$`oAs pre_sd`
+as3.post.mu.tok <- toka$`AsIII post_mean`
+as3.post.sd.tok <- toka$`AsIII post_sd`
+as5.post.mu.tok <- toka$`AsV post_mean`
+as5.post.sd.tok <- toka$`AsV post_sd`
+oas.post.mu.tok <- toka$`oAs post_mean`
+oas.post.sd.tok <- toka$`oAs post_sd`
+
+upper.tok <- 0.999999
+lower.tok <- 0
+
+sim.ias.pre.tok <- matrix(NA,iter,sum(dup.tok))
+sim.ibc.tok <- matrix(NA,iter,sum(dup.tok))
+sim.prp.tok <- matrix(NA,iter,sum(dup.tok))
+sim.tbc.tok <- matrix(NA,iter,sum(dup.tok))
+sim.obc.tok <- matrix(NA,iter,sum(dup.tok))
+
+for(i in 1:iter) {
+  temp.ias.pre.tok <- muSDGen(n.tok,                 ## iAs pre= As3+As5 pre
+                              dup.tok,
+                              as3.pre.mu.tok,
+                              as3.pre.sd.tok)+
+    muSDGen(n.tok,
+            dup.tok,
+            as5.pre.mu.tok,
+            as5.pre.sd.tok)
+  sim.ias.pre.tok[i,] <- temp.ias.pre.tok
+  
+  temp.ias.post.tok <- muSDGen(n.tok,                 ## iAs post= As3+As5 post
+                              dup.tok,
+                              as3.post.mu.tok,
+                              as3.post.sd.tok)+
+    muSDGen(n.tok,
+            dup.tok,
+            as5.post.mu.tok,
+            as5.post.sd.tok)
+  
+  temp.ibc.tok <- temp.ias.post.tok/temp.ias.pre.tok   ## iAs BC= iAs post/pre
+  temp.ibc.tok[temp.ibc.tok > upper.tok] <- upper.tok   # iAs BC truncation
+  temp.ibc.tok[temp.ibc.tok < lower.tok] <- lower.tok
+  sim.ibc.tok[i,] <- temp.ibc.tok
+  
+  temp.oas.pre.tok <- muSDGen(n.tok,                  ## oAs pre
+                              dup.tok,
+                              oas.pre.mu.tok,
+                              oas.pre.sd.tok)
+  temp.oas.post.tok <- muSDGen(n.tok,                  ## oAs post
+                               dup.tok,
+                               oas.post.mu.tok,
+                               oas.post.sd.tok)
+  
+
+  
+  temp.obc.tok <- temp.oas.post.tok/temp.oas.pre.tok   ## oAs BC= oAs post/pre
+  temp.obc.tok[temp.obc.tok > upper.tok] <- upper.tok
+  temp.obc.tok[temp.obc.tok < lower.tok] <- lower.tok
+  sim.obc.tok[i,] <- temp.obc.tok
+  
+  temp.tas.pre.tok <- temp.ias.pre.tok+ temp.oas.pre.tok ## tAs pre= iAs+oAs pre
+  temp.tas.post.tok <- temp.ias.post.tok+ temp.oas.post.tok ## tAs pre= iAs+oAs pre
+  temp.tbc.tok <- temp.tas.post.tok / temp.tas.pre.tok     ## tAs BC = tAs post / pre
+  temp.tbc.tok[temp.tbc.tok > upper.tok] <- upper.tok
+  temp.tbc.tok[temp.tbc.tok < lower.tok] <- lower.tok
+  sim.tbc.tok[i,] <- temp.tbc.tok
+  
+  temp.prp.tok <- temp.ias.pre.tok / temp.tas.pre.tok  ## prp = iAs/tAs pre
+  sim.prp.tok[i,] <- temp.prp.tok
+}
+
+## -------------------
+all.ibc.mtx <- cbind(sim.ibc.ack,
+                    sim.ibc.ala13,
+                    sim.ibc.ala15,
+                    sim.ibc.du,
+                    sim.ibc.lap,
+                    sim.ibc.lee,
+                    sim.ibc.man,
+                    sim.ibc.tok)
+
+```
+
+***
+
+# 2 Parameter estimation   
+
+## 2.1 Empirical distribution   
+
+Based on the simulated data, the empiricial distribution is illustrated in the following histogram:   
+```{r} 
+hist(apply(all.ibc.mtx,2,median),breaks = seq(from=0,to=1,by=0.1),density = T,freq = F,col = "black")
+```
+
+One highlight in the histogram, is the chunck of data at the upper end near the limit of 1. Three studies, Laparra 2005, Ackerman 2005 and Lee 2018, reported a considerable amount of BC >=1.The three studies contributed ~40% of data points. This has significant impact on the estimated parameters.   
+
+## 2.2 ML estimate of beta distribution
+
+I present the ML estimate of beta distribution based on the 1000 iters here.   
+
+```{r}
+library(fitdistrplus)
+
+beta.mle <- matrix(NA,iter,2)
+for(i in 1:iter){                                                              ## beta by mle
+  beta.mle[i,] <- fitdist(all.ibc.mtx[i,],"beta",
+                          method = "mle")$estimate
+}
+  
+curve(dbeta(x,beta.mle[1,1],beta.mle[1,2]),col="gray")
+for(i in 2:iter){
+    
+  curve(dbeta(x,beta.mle[i,1],beta.mle[i,2]),add = T,col="gray")
+}
+```
+
+Before I explain the results,   
+1. There is no problem with this package I used. Estimates computed using package is the same as the results by other packages in R, namely EnvStats and MASS.   
+2. I further confirmed that the ML estimate of beta by SAS and SPSS are the same as the ones I have here. Those programs does not depend on coding as much as R so there is no way I can make coding mistakes in those programs. It is, therefore, very unlikely that all the ML estimates I have, including those produced by SPSS, are all wrong due to my coding mistakes. 
+
+Now look at the fitting results. 
+1. The NaNs are the consequences of the chuck of data near 1,as what I mentioned in section 2.1    
+2. For the same reason, the ML estimates of 975/1000 iters have the scale parameter to be smaller than 1. The rest 25 iter have their estimates with a scale parameter >=1 and hence a closed curve.   
+3. I have shown a similar figure to you in March. You were not satisfied with the open curve which lead to your command for me to use CrystalBall. The three studies (section 2.1) are still included so this pattern of curves are expected in the current ML estimates.    
+4. This also explains why such a beta estimate is considered as poor fit by KS statistics. KS statstics measures the distances between the empirical distribution and theortical distribution. At the upper end near 1, the distances between Inf (theortical) and the empirical density are larger than other distributiosn with closed curves. 
+
+## 2.3 Alternative estimation strageties
+
+If you are not satisfied by the open-form curve as you were in March, here I present the Method of Moment/ Moment Match (MOM) estimates of beta. It has a closed-form curve as the following:
+```{r}
+
+beta.mme <- matrix(NA,iter,2)
+
+for(i in 1:iter){                                                              ## beta by mme
+  beta.mme[i,] <- fitdist(all.ibc.mtx[i,],"beta",
+                          method = "mme")$estimate
+
+}
+  curve(dbeta(x,beta.mme[1,1],beta.mme[1,2]),col="gray")
+for(i in 2:iter){
+    curve(dbeta(x,beta.mme[i,1],beta.mme[i,2]),add = T,col="gray")
+}
+```
+
+Looking at the results by MME:
+1. the NaNs are still here as the data are unchanged   
+2. The parameters are estimated by matching the first and second moment (mean and variance) between the empirical and theortical distribution   
+3. the curve now has a closed form, as the scale parameters of all iters are now > 1   
+
+# 3 My proposals for getting this done
+
+As mentioned in your email, all the distributions whose domain exceed the interval [0,1] cannot be supported by the bioaccessibility data. As such, only distributions with bounded domain should be considered as candidate models, such as beta, uniform and triangular. 
+Furthermore, uniform and triangular seems apprarently poorer than beta as the two distributions are much less flexible. Hence, I believe it is reasonable to argue that *the only reasonalbe candidate model is the beta distribution* and there is no need for model selection. If this would be the case, then this work can be simply completed by providing a MOM estimate of beta parameters. 
+
+I understand your suggestion that it is better to avoid complicated stats so using MME may become an issue. If this is the case, we will need to go back to mle. In our previous discussion, you explained to me why not to do a truncated distribution. I absolutely agree with you that the truncated distributions are hard to comprehend and difficult in application, which hampers the likelihood for our manuscript to be published. However, I think you did not explain to me if truncated distributions are scientifically invalid for our data. I would beg you, if you have time, to enlighten me on this matter.
