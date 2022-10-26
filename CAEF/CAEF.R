@@ -67,15 +67,26 @@ RR_weighted_study3_batch <- mapply(
 )
 
 ## AEF by CSF------
-a_bladder <- 0.000005
+a_bladder <- 3.6e-5              # ASR by Chinese population 
 AEF_CSF_batch <- lapply(AEI_CSF_batch,function(x){
   AEF <- get_AEF_CSF(x,a = a_bladder)
 })
+save(list = "AEF_CSF_batch",
+     file = paste0(mywd,"AEF_CSF_batch_",batch_ID,".rdata"))
 
 ## AEF by BHBMD RR-----
 
 # overarching parameters
 AEF_RR_overarching <- lapply(RR_weighted_overarching_batch,
                              get_AEF_RR)
+save(
+  list = "AEF_RR_overarching",
+  file = paste0(mywd,"AEF_RR_overarching_batch_",batch_ID,".rdata")
+)
 
 AEF_RR_study3 <- lapply(RR_weighted_study3_batch,get_AEF_RR)
+
+save(
+  list = "AEF_RR_study3",
+  file = paste0(mywd,"AEF_RR_study3_batch_",batch_ID,".rdata")
+)
