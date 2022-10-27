@@ -15,6 +15,8 @@ DSName <- "simu_ADD"
 batchsize <- 5
 batch <- 200
 
+a_bladder <- 3.6e-5              # ASR by Chinese population 
+
 ## Settings------
 
 task_ID <- Sys.getenv("SLURM_ARRAY_TASK_ID")
@@ -27,13 +29,13 @@ get_AEF_CSF <- function(AEI,a){
   if(a <= 0){ stop("prevalence must be positive")}
   if(sum(AEI <= 0) >= 1){stop("Attributable incidence must be postive")}
   
-  AEF <- AEI / p
+  AEF <- AEI / a
   
   return(AEF)
 }
 
 get_AEF_RR <- function(RR){
-  if(a <= 0){ stop("prevalence must be positive")}
+  
   if(sum(RR <= 0) >= 1){stop("Relative risk must be positive")}
   
   AEF <- 1 - (1/ RR )
@@ -41,7 +43,7 @@ get_AEF_RR <- function(RR){
   return(AEF)
 }
 
-## Load data------
+## AEF by CSF------
 
 ## attritubale incidence by CSF
 AEI_CSF_batch <- vector(length = batchsize)
@@ -51,42 +53,45 @@ for(b in 1:batchsize){
   )
 }
 
-## weighted RR by BHBMD
-
-# overarching parameters
-RR_weighted_overarching_batch <- mapply(
-  load,file = paste0(mywd,"RR_weighted_",level,
-                     "_batch_",batch_ID,"_",1:batchsize, ".rdata")
+assign(
+  paste0("AEF_CSF_batch_",batch_ID),
+  lapply(AEI_CSF_batch,function(x){
+    AEF <- get_AEF_CSF(x,a = a_bladder)
+  })
 )
-
-
-# study3 parameters
-RR_weighted_study3_batch <- mapply(
-  load,file = paste0(mywd,"RR_weighted_",level,
-                     "_batch_",batch_ID,"_",1:batchsize, ".rdata")
-)
-
-## AEF by CSF------
-a_bladder <- 3.6e-5              # ASR by Chinese population 
-AEF_CSF_batch <- lapply(AEI_CSF_batch,function(x){
-  AEF <- get_AEF_CSF(x,a = a_bladder)
-})
-save(list = "AEF_CSF_batch",
+save(list = paste0("AEF_CSF_batch_",batch_ID),
      file = paste0(mywd,"AEF_CSF_batch_",batch_ID,".rdata"))
 
 ## AEF by BHBMD RR-----
 
-# overarching parameters
-AEF_RR_overarching <- lapply(RR_weighted_overarching_batch,
-                             get_AEF_RR)
-save(
-  list = "AEF_RR_overarching",
-  file = paste0(mywd,"AEF_RR_overarching_batch_",batch_ID,".rdata")
-)
+## each data contains RR weighted by 7 approaches
 
-AEF_RR_study3 <- lapply(RR_weighted_study3_batch,get_AEF_RR)
+# *overarching parameters-------
+level <- "overarching"
+for(b in 1:batchsize){
+  load(file = paste0(mywd,"RR_weighted_",level,"_batch_",
+                     batch_ID,"_",b, ".rdata"))
+  assign(
+    paste0("AEF_RR_",level,"_batch_",batch_ID,"_",b),
+    lapply(fd_weighted,get_AEF_RR)
+  )
+  save(
+    list = paste0("AEF_RR_",level,"_batch_",batch_ID,"_",b),
+    file = paste0(mywd,"AEF_RR_",level,"_batch_",batch_ID,"_",b,".rdata")
+  )
+} 
 
-save(
-  list = "AEF_RR_study3",
-  file = paste0(mywd,"AEF_RR_study3_batch_",batch_ID,".rdata")
-)
+# *study3 parameters----------
+level <- "study3"
+for(b in 1:batchsize){
+  load(file = paste0(mywd,"RR_weighted_",level,"_batch_",
+                     batch_ID,"_",b, ".rdata"))
+  assign(
+    paste0("AEF_RR_",level,"_batch_",batch_ID,"_",b),
+    lapply(fd_weighted,get_AEF_RR)
+  )
+  save(
+    list = paste0("AEF_RR_",level,"_batch_",batch_ID,"_",b),
+    file = paste0(mywd,"AEF_RR_",level,"_batch_",batch_ID,"_",b,".rdata")
+  )
+} 
