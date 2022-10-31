@@ -4,9 +4,9 @@
 ## Date: Oct 27 2022
 
 ## Settings-------
-# mywd <- paste0(getwd(),"/")
-# mywd <- "C:/Users/bks01/Downloads/Working/"
-# fileDir <- mywd
+mywd <- paste0(getwd(),"/")
+mywd <- "C:/Users/bks01/Downloads/Working/"
+fileDir <- mywd
 
 mywd <- "/N/scratch/zhezhou/test/"
 fileDir <- "/N/slate/zhezhou/"
@@ -15,6 +15,7 @@ batchsize <- 5
 batch <- 200
 
 library("reshape2")
+library("tidyverse")
 
 
 ## Combine AEF from CSF--------
@@ -37,9 +38,10 @@ df_ggplot <- melt(t(as.matrix(df_AEF_CSF))) %>% select(-1) %>%
   iter = Var2
 ) 
 
- apply(df_AEF_CSF,2,function(x){
+Count_bad <- apply(df_AEF_CSF,2,function(x){
   sum(x > 1)
 })
+write.csv(Count_bad,"Count_bad_CSF.csv",row.names = F)
 
 myplot <- ggplot(data = df_ggplot)+ 
   geom_histogram(aes(x = value,y = ..density.., group = iter),
