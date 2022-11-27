@@ -1,7 +1,8 @@
-Compare attributable cancer risk fractions calculated from cancer slope factor and relative risks      
+Compare attributable cancer risk fractions calculated from cancer slope factor and WHALB relative risks
 
-Cancer slope factor implies a linear assumption for low-dose extrapolation.
-Relative risks could be estimates without imposing assumptions on the shape of dose-response curve at low dose. 
+For WHALB, see repository: https://github.com/zhengzhou0105/WHALB
+
+Aim: cancer risk estimates without imposing assumptions on the shape of dose-response curve at low dose. 
 
 In this demonstration, relative risks weighted across hierarchical bayesian benchmark dose models were used. 
 No assumption was placed on curve shape, i.e. prior model weights are equally distributed among candidate models.
