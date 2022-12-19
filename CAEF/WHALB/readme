@@ -1,0 +1,10 @@
+Calculate attributable excessive cancer risks given WHALB-predicted relative risks\
+
+Requires the input of posterior parameter estimations from WHALB.  See https://github.com/zhengzhou0105/WHALB \
+Allows integration with SLURM-based high performance computation.\
+Allows mannual modification on the scenario of prediction.\
+
+Default setting:
+  Input dose: average daily dose for lifetime exposure of toxcicants from 0 to 5 $\mu$g/kg/day.\
+  WHALB response: relative cancer risk
+  
