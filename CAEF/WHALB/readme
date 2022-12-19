@@ -8,3 +8,18 @@ Default setting:
   Input dose: average daily dose for lifetime exposure of toxcicants from 0 to 5 $\mu$g/kg/day.\
   WHALB response: relative cancer risk
   
+WHALB includes a Monte Carlo simulation to account for uncertainty in input data. To summarize over the iterations of MC simulation, two modes are optional:\
+  1. summary of pointwise posterior predicted relative risks. Including the following files:\
+    WHALB_RR_individual\
+    WHALB_RR_weighted\
+    WHALB_summary_RR_individual\
+    WHALB_summary_RR_weighted\
+  2. relative risks predicted on summarized statistics of posterior parameters. Including the following files:\
+    WHALB_summary_RR_individual\
+    WHALB_summary_RR_weighted\
+    
+ Complete posterior iterations are used for full uncertainty characterization. 
+ Summary statistics are only used for demonstration purpose, implemented in the following files:\
+  WHALB_iterative_individual
+  WHALB_iterative_weighted
+  WHALB_RR_analysis
